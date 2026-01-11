@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <title>OCR Demo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="min-h-screen bg-slate-950 text-slate-100">
+  <div class="max-w-5xl mx-auto px-4 py-10">
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div>
+        <h1 class="text-2xl md:text-3xl font-semibold">OCR Demo</h1>
+        <p class="text-slate-400 mt-1">
+          Upload or <span class="text-slate-200 font-medium">Ctrl+V</span> to paste an image. Switch model version.
+        </p>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <span class="text-slate-400 text-sm">API</span>
+        <input
+          id="apiBase"
+          class="w-64 md:w-80 rounded-xl bg-slate-900 border border-slate-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-600"
+          value=""
+          placeholder="http://localhost:5348"
+        />
+      </div>
+    </div>
+
+    <div class="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <!-- Left -->
+      <div class="rounded-2xl bg-slate-900/60 border border-slate-800 p-5">
+        <div class="flex items-center justify-between">
+          <h2 class="font-medium">Input</h2>
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-slate-400">Model</span>
+            <select
+              id="modelSelect"
+              class="rounded-xl bg-slate-900 border border-slate-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-600"
+            >
+              <option value="v1">v1 (/recognize)</option>
+              <option value="v2" selected>v2 (/recognize2)</option>
+            </select>
+          </div>
+        </div>
+
+        <div
+          id="pasteZone"
+          class="mt-4 rounded-2xl border border-dashed border-slate-700 bg-slate-950/40 p-4"
+        >
+          <div class="flex items-start gap-3">
+            <div class="mt-0.5 w-2.5 h-2.5 rounded-full bg-slate-500"></div>
+            <div class="text-sm text-slate-300">
+              <div class="font-medium text-slate-200">Paste zone</div>
+              <div class="text-slate-400 mt-1">
+                Click here then press <span class="text-slate-200 font-medium">Ctrl+V</span> to paste an image,
+                or use the file picker below.
+              </div>
+              <div class="text-slate-500 mt-2 text-xs">
+                Supports PNG/JPG/WebP from clipboard.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <label class="mt-4 block">
+          <span class="sr-only">Choose image</span>
+          <input
+            id="fileInput"
+            type="file"
+            accept="image/*"
+            class="block w-full text-sm text-slate-300
+                   file:mr-4 file:rounded-xl file:border-0
+                   file:bg-slate-800 file:px-4 file:py-2
+                   file:text-sm file:font-medium file:text-slate-100
+                   hover:file:bg-slate-700"
+          />
+        </label>
+
+        <div id="previewWrap" class="mt-4 hidden">
+          <div class="flex items-center justify-between mb-2">
+            <div class="text-sm text-slate-400">Preview</div>
+            <button
+              id="clearBtn"
+              class="text-xs px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700"
+            >
+              Clear
+            </button>
+          </div>
+
+          <div class="rounded-xl overflow-hidden border border-slate-800 bg-slate-950">
+            <img id="previewImg" class="w-full h-auto object-contain" />
+          </div>
+
+          <div class="mt-4 flex gap-2">
+            <button
+              id="runBtn"
+              class="flex-1 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-medium px-4 py-2"
+            >
+              Recognize
+            </button>
+            <button
+              id="copyBtn"
+              class="rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 px-4 py-2 text-sm"
+              disabled
+            >
+              Copy text
+            </button>
+          </div>
+
+          <div class="mt-3 text-xs text-slate-500">
+            Tip: you can paste again to replace the image.
+          </div>
+        </div>
+
+        <div id="status" class="mt-4 text-sm text-slate-400"></div>
+      </div>
+
+      <!-- Right -->
+      <div class="rounded-2xl bg-slate-900/60 border border-slate-800 p-5">
+        <div class="flex items-center justify-between">
+          <h2 class="font-medium">Output</h2>
+          <div class="text-xs text-slate-500">
+            Latency: <span id="latency">-</span>
+          </div>
+        </div>
+
+        <div class="mt-4 rounded-xl border border-slate-800 bg-slate-950 p-4 min-h-[220px]">
+          <pre id="result" class="whitespace-pre-wrap break-words text-slate-100 text-sm leading-relaxed"></pre>
+          <div id="emptyHint" class="text-slate-500 text-sm">
+            Result will appear here.
+          </div>
+        </div>
+
+        <div class="mt-4 text-xs text-slate-500">
+          Endpoint used: <span id="endpointLabel" class="text-slate-300">/recognize2</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const fileInput = document.getElementById("fileInput");
+    const previewWrap = document.getElementById("previewWrap");
+    const previewImg = document.getElementById("previewImg");
+    const runBtn = document.getElementById("runBtn");
+    const clearBtn = document.getElementById("clearBtn");
+    const copyBtn = document.getElementById("copyBtn");
+    const statusEl = document.getElementById("status");
+    const resultEl = document.getElementById("result");
+    const emptyHint = document.getElementById("emptyHint");
+    const latencyEl = document.getElementById("latency");
+    const endpointLabel = document.getElementById("endpointLabel");
+    const modelSelect = document.getElementById("modelSelect");
+    const apiBase = document.getElementById("apiBase");
+    const pasteZone = document.getElementById("pasteZone");
+
+    let currentBlob = null;
+
+    function defaultApiBase() {
+      // If served by FastAPI on same host/port, empty string works (relative).
+      // If opened as a file://, user must set api base.
+      return "";
+    }
+
+    apiBase.value = defaultApiBase();
+
+    function setStatus(msg, isError=false) {
+      statusEl.textContent = msg || "";
+      statusEl.className = "mt-4 text-sm " + (isError ? "text-rose-400" : "text-slate-400");
+    }
+
+    function setResult(text) {
+      resultEl.textContent = text || "";
+      emptyHint.style.display = text ? "none" : "block";
+      copyBtn.disabled = !text;
+    }
+
+    function endpointPath() {
+      const v = modelSelect.value;
+      return v === "v1" ? "/recognize" : "/recognize2";
+    }
+
+    function updateEndpointLabel() {
+      endpointLabel.textContent = endpointPath();
+    }
+
+    modelSelect.addEventListener("change", updateEndpointLabel);
+    updateEndpointLabel();
+
+    function showPreviewFromBlob(blob) {
+      currentBlob = blob;
+      const url = URL.createObjectURL(blob);
+      previewImg.src = url;
+      previewWrap.classList.remove("hidden");
+      setStatus("");
+      latencyEl.textContent = "-";
+      setResult("");
+      copyBtn.disabled = true;
+    }
+
+    fileInput.addEventListener("change", () => {
+      const f = fileInput.files && fileInput.files[0];
+      if (!f) return;
+      if (!f.type.startsWith("image/")) {
+        setStatus("Please select an image file.", true);
+        return;
+      }
+      showPreviewFromBlob(f);
+    });
+
+    clearBtn.addEventListener("click", () => {
+      currentBlob = null;
+      fileInput.value = "";
+      previewWrap.classList.add("hidden");
+      previewImg.src = "";
+      setStatus("");
+      latencyEl.textContent = "-";
+      setResult("");
+    });
+
+    copyBtn.addEventListener("click", async () => {
+      const text = resultEl.textContent || "";
+      if (!text) return;
+      try {
+        await navigator.clipboard.writeText(text);
+        setStatus("Copied to clipboard.");
+        setTimeout(() => setStatus(""), 1200);
+      } catch {
+        setStatus("Copy failed (browser permission).", true);
+      }
+    });
+
+    async function callApi(blob) {
+      const base = (apiBase.value || "").trim();
+      const path = endpointPath();
+      const url = base ? (base.replace(/\/+$/, "") + path) : path;
+
+      const fd = new FormData();
+      fd.append("file", blob, "image.png");
+
+      const t0 = performance.now();
+      const res = await fetch(url, { method: "POST", body: fd });
+      const t1 = performance.now();
+      latencyEl.textContent = `${Math.round(t1 - t0)} ms`;
+
+      if (!res.ok) {
+        const msg = await res.text().catch(() => "");
+        throw new Error(`HTTP ${res.status} ${res.statusText} ${msg ? "- " + msg : ""}`);
+      }
+
+      return res.json();
+    }
+
+    runBtn.addEventListener("click", async () => {
+      if (!currentBlob) {
+        setStatus("No image selected/pasted.", true);
+        return;
+      }
+      setStatus("Running OCR...");
+      runBtn.disabled = true;
+
+      try {
+        const data = await callApi(currentBlob);
+        setResult(data.text || "");
+        setStatus("Done.");
+      } catch (e) {
+        setStatus(String(e.message || e), true);
+      } finally {
+        runBtn.disabled = false;
+      }
+    });
+
+    // ---- Paste support ----
+    function extractImageFromClipboardEvent(e) {
+      const items = e.clipboardData && e.clipboardData.items;
+      if (!items) return null;
+      for (const it of items) {
+        if (it.type && it.type.startsWith("image/")) {
+          return it.getAsFile();
+        }
+      }
+      return null;
+    }
+
+    // Focus helper: click paste zone to focus page
+    pasteZone.tabIndex = 0;
+    pasteZone.addEventListener("click", () => pasteZone.focus());
+
+    document.addEventListener("paste", (e) => {
+      const f = extractImageFromClipboardEvent(e);
+      if (!f) return;
+      e.preventDefault();
+      showPreviewFromBlob(f);
+      setStatus("Image pasted. Click Recognize.");
+    });
+
+    // Optional: drag & drop
+    pasteZone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      pasteZone.classList.add("border-slate-500");
+    });
+    pasteZone.addEventListener("dragleave", () => {
+      pasteZone.classList.remove("border-slate-500");
+    });
+    pasteZone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      pasteZone.classList.remove("border-slate-500");
+      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (!f) return;
+      if (!f.type.startsWith("image/")) {
+        setStatus("Dropped file is not an image.", true);
+        return;
+      }
+      showPreviewFromBlob(f);
+      setStatus("Image dropped. Click Recognize.");
+    });
+  </script>
+</body>
+</html>
